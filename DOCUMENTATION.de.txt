@@ -1,0 +1,171 @@
+DESKRUN - Desktopstarts aus SSH (0.87.13)
+=======================================
+
+DESKRUN ist eine normale Konsolen-App. Sie reicht einen kopierten Auftrag
+beim laufenden WINSVC ein. Der vorhandene Desktop startet das Programm,
+bindet sein Fenster an und fokussiert es. GUI-Programme erhalten normale
+Anwendungsfenster, Konsolenprogramme ein Desktop-Konsolenfenster.
+Die Anwendung gehoert dem Desktop und bleibt nach Helferexit und SSH-Logout
+bestehen. Der normale Desktop uebernimmt auch Schliessen und Reap.
+
+Aufrufe (Optionen immer vor dem Ziel)
+-----------------------------------
+  DESKRUN "C:\R4OS\SOFTWARE\DESKTOP\EXPLORER.R4X" "D:\Roms"
+  DESKRUN /OPEN "D:\Roms"
+  DESKRUN /OPEN "D:\Roms\SNES\Super Mario World (Europe).sfc"
+  DESKRUN /JSON /WAIT:10000 /WAITFRAME "C:\TEMP\APP.R4X" "Argument mit Leerzeichen"
+  DESKRUN /JSON /STATUS:4:600:7:900
+  DESKRUN /?
+
+/OPEN verwendet die gleichen R4STD-Besitzer wie Explorer: ASSOC.R4S,
+R4LNK und den installierten Schema-4-Subsystemkatalog in MODULES.JSON.
+Die Aufloesung geschieht im Helfer, anschliessend werden Ziel, Argumente
+und Startpolicy vollstaendig kopiert. SNES und andere Subsysteme erhalten
+den bestehenden R4SUBSYS1-Umschlag; keine feste ROM-/Erweiterungsliste.
+Mehrdeutige, fehlende oder ungueltige Zuordnungen ergeben einen Fehler.
+Direkte Starts verlangen einen R4X-Pfad. Relative Ziele werden gegen CWD
+der aufrufenden Shell normalisiert. X:relativ ohne Wurzel wird abgewiesen.
+Die Argumente hinter einem direkten Ziel bleiben inklusive ihrer inneren
+Anfuehrungszeichen, Leerzeichen und UTF-8-Bytes erhalten. /OPEN akzeptiert
+keine zusaetzlichen App-Argumente. Bestehende Single-Instance-Fensterpolicy
+bleibt erhalten: etwa ein bereits offener Rechner wird fokussiert.
+
+Die vorhandene R4X-Grenze betraegt 127 UTF-8-Argumentbytes, einschliesslich
+DESKRUN-Optionen und Ziel beim Helferaufruf. Zu lange Aufrufe kann schon die
+Shell/der Loader abweisen. Der kopierte Zielpfad darf maximal 159 Bytes,
+der an die Ziel-App uebergebene Argumenttext maximal 127 Bytes enthalten.
+Es gibt keine stille Kuerzung von Ziel/Argumenten; nur Fenstertitel werden
+an UTF-8-Grenzen auf die vorhandene dekorative Titellaenge begrenzt.
+
+Quittungen und Zeitbudget
+------------------------
+Normal wartet DESKRUN auf die echte Fensteranbindung, standardmaessig
+bis 5000ms. /WAIT:<ms> setzt 1..300000ms fuer Einreichung plus Warten zusammen;
+der Wait beginnt kein neues Zeitbudget. /WAITFRAME verlangt zusaetzlich den
+ersten vom Desktop uebernommenen GUI-Frame bzw. Konsolenausgabe-Snapshot.
+Das ist eine Softwarequittung, kein Nachweis sichtbarer TV-Pixel, physischer
+Eingabelatenz oder hoerbaren Tons.
+
+phase=request: Annahme noch unbestaetigt;
+accepted: vom Broker kopiert; starting: vom Desktop abgeholt;
+process: exakter Prozess bekannt; window: echte Fensteranbindung;
+content: Inhalt vom Desktop uebernommen. Fehler behalten die letzte Phase.
+Die Ausgabe nennt request, phase, error/result, ERRORLEVEL, Prozess-ID und
+Generation, Fensterkennung(slot+1), content und gegebenenfalls raw.
+/JSON gibt dieselben Informationen strukturiert aus; terminal bezeichnet
+den Abschluss des Start-/Warteauftrags, nicht das Ende der Anwendung.
+
+Die Kennung besteht aus Broker-ID:Broker-Generation:Helfer-ID:Helfer-Generation
+und steht bereits vor dem Submit fest. Bei verlorener Antwort oder Timeout
+keinen neuen Start automatisch absetzen. /STATUS:<Kennung> liest nur den
+zuletzt bestaetigten Stand und startet keine Anwendung. Ein erfolgreicher
+STATUS-Abruf mit accepted/starting bedeutet noch keinen Fenstererfolg.
+Timeout bricht einen schon begonnenen Loader/Prozess nicht ab. Eine spaetere
+echte Quittung kann per STATUS sichtbar werden. Noch nicht abgeholte Auftraege
+werden nach Ablauf nicht mehr gestartet. Helferexit allein storniert nichts.
+
+ERRORLEVEL
+----------
+0 Erfolg; 1 Transport/Servicezugang; 2 Syntax; 3 Pfad/Zuordnung;
+4 kein laufender Desktop/WINSVC; 5 Auftragsqueue voll; 6 Fensterslots voll;
+7 Klassifikation/Loader; 8 Anbindung; 9 Zeitbudget abgelaufen;
+10 Desktopgeneration beendet; 11 App vor Inhaltsquittung beendet;
+12 ungueltiges Protokoll/Ziel; 13 Kennung unbekannt/Ergebnis verdraengt;
+14 andere WINSVC-Generation. Vor Submit entstandene Fehler heissen
+before_submit und haben noch keine Auftragskennung.
+
+Besitz und Grenzen
+-----------------
+App: Repositories/Apps/DesktopRun (DESKRUN.R4X, Slim und Full).
+Wire/Queue: Services/WindowService/Contract/desktop_launch_v1.zig und
+src/desktop_launch.zig. Desktop besitzt eine Rust-Projektion dieses
+Dienstvertrags und den Verbraucher in runtime/desktop_launch.rs.
+Es wird keine neue Kernel-ABI benoetigt; allgemeine SDK-Servicefassaden
+tragen Submit, Status, Wait, Austausch und Complete (4736..4740).
+
+Maximal 8 aktive Auftraege, 16 kopierte Ergebnisplaetze. Terminale Ergebnisse
+bleiben bis 60s oder bis zur Verdraengung durch neue Auftraege erhalten.
+Ein Dienstneustart erzeugt eine neue Brokeridentitaet. Alte Kennungen werden
+als stale_service/unknown abgewiesen; bereits gestartete Desktop-Children
+werden dadurch nicht dem Helfer zugeordnet. Bis zur erneuten Desktopanmeldung
+kann ein neuer Auftrag no_desktop melden; er wurde dann nicht angenommen.
+Desktopwechsel uebertraegt keine
+alten Auftraege auf die neue Generation.
+
+Wartende RPCs parken nur ihre ID im Broker; WINSVC bleibt fuer den Desktop
+ansprechbar. Die Uebernahme laeuft im bereits vorhandenen Tray-Austausch mit,
+nach Submit gibt es ein desktopActivityNotify. Keine neue dauernde Pollschleife
+und kein Diagnoseprotokoll fuer Produktstarts. Verlorene Complete-Antworten
+fuehren zur erneuten Quittung desselben Resultats, niemals zum erneuten Spawn.
+Loaderarbeit bleibt synchron im vorhandenen Desktoppfad; deren Entkopplung
+ist gesondert fuer 0.87.41 geplant.
+
+Qualifikation
+-------------
+Gezielte Hostfaelle: DesktopRun/Build.sh test, WindowService/Build.sh
+launch-test und Desktop/Tests/RustNative.ps1 mit den betroffenen
+runtime::desktop::external, hosted::launch und runtime::service-Filtern.
+Test-only DRGUI schreibt empfangene Argumentbytes nach
+C:\TEMP\DRARGS-<PID>.TXT; DRCHECK STATUS/CLOSE <PID>:<Generation> liest bzw.
+schliesst nur die angegebene genaue Instanz und wartet auf normalen Reap.
+DRCHECK /CHILD bleibt als normales Konsolenfenster offen. Die Fixtures
+gehoeren nicht zu Slim/Full und werden nicht ins Modulinventar eingetragen.
+
+Lokale Funktionsabnahme am 25.10.2026: normaler Softwaredesktop, KVM4,
+2GB RAM, regulaere SSH-Verbindung. GUI- und Konsolenfenster bleiben nach
+Helfer-/SSH-Ende mit exakter Prozessgeneration lebendig und werden normal
+geschlossen und gereapt. QEMU-Screenshot zeigt das fokussierte GUI-Fenster.
+UTF-8/Anfuehrungszeichen/doppelte Leerzeichen wurden aus der vom GUI-Kind
+geschriebenen Datei bytegleich zur Eingabe zurueckgelesen. Relative Ziele,
+UTF-8-Ordner, Textdokument, R4LNK und SNES aus dem installierten Katalog
+bestehen. SNES verwendet die eigene R4SNES-Test-ROM, kein kommerzielles ROM.
+
+Drei parallele SSH-Auftraege liefern drei verschiedene Children/Fenster;
+der weitere Start wird mit window_full/6 abgewiesen. Loaderfehler/7,
+Syntax/2 und fehlende Zuordnung/3 bleiben eindeutig. Die GUI-Fixture NOFRAME
+liefert ohne /WAITFRAME window/0 mit content=0; mit /WAITFRAME /WAIT:1000
+folgt timeout/9, und STATUS nennt spaeter die echte Fenster-/Prozessidentitaet
+mit content=0. Die Anwendung bleibt dabei bis zum normalen Close bestehen.
+Die Host-Queuefaelle pruefen zusaetzlich Kapazitaet8, verlorene Antworten,
+verspaetete Quittung und den exakten Desktop-Generationswechsel.
+
+Ein echter SERVMAN RESTART WINSVC laesst das laufende GUI-Kind bestehen;
+die alte Kennung ergibt stale_service/14. Nach Wiederanmeldung des Desktops
+funktioniert der naechste Start. Ein regulaer geschlossener/gereapter Desktop
+fuehrt zu no_desktop/4 ohne erzeugtes Kind. Der erste Testgast wurde regulär
+mit POWEROFF beendet, QEMU-Exit0.
+
+Finale Artefaktabnahme: Release0.87.13, DESKRUN0.1.1, Desktop0.1.165,
+WINSVC0.1.18, unveraenderter Kernel0.1.384. Die drei Module wurden aus dem
+gebauten Installationsimage vollstaendig zurueckgelesen und mit den aktuellen
+Artefakten verglichen; VER bestaetigt Release13 und aktiven/installierten
+Kernel384. SHA-256:
+  DESKRUN: cc91909df7ecfd184b7f31fd928e576ddc6e368de119f582c5eaca7a82ace2b7
+  Desktop: 0fd9e936f570afb49b295e4c438442504b2f7e67e7933fd2549b9c5ed25cdb0e
+  WINSVC:  8e18f1deb2fd87b6580e32148f24ff538e82993b79e7c93ebf9a45229c3d26a8
+  Boot-ELF:d554519cbcc15a13a4dbb1eb013a7df513a3672a563fb4acc147f2958e8552ca
+Auf diesem letzten Image erneut bestanden: installierter DESKRUN, echte
+UTF-8-Argumentdatei, GUI/Konsole/Ordner/Dokument/LNK/SNES, parallel3 plus
+Slotgrenze, Fenster-versus-Inhalt/Timeout/Status, relativer Start nach
+Neustart und fehlender Desktop. Der originale SPECTRA CHECK DESKTOP /RESTART
+besteht mit Drag/Resize/Focus, Idle-Producern, Trayevent/Remove, neuem
+Servicehandle, zwei Child-Completion/Reap0 und REMOTEFRAME-Abbau.
+Finale DESKTOP-Quittung: success=true, cleanup_acknowledged=true.
+Der abschliessende Close des Desktops ist ebenfalls exakt gereapt;
+normaler POWEROFF und QEMU-Exit0.
+
+Genau ein finaler STANDARD auf hetzner-qemu/KVM4, Suite3, bestanden:
+  run_id: 28f69195-9efc-438c-9f16-52b6cf8ac786
+  Originalexport-SHA256: c82af681f03b29434c101bbeb4fbff5c37fd3008ecbae15d0aa1dd2e4b054d09
+  Referenz: 28b326e2-4323-4a4c-a0d2-4c1bab4958c0
+Vollstaendiger unveraenderter Schema-1-Export per PUT201 importiert, danach
+alle Originalfelder einschliesslich Artefakten, Kontext, fuenf Metriken,
+30 Rohsamples und sechs Scores per GET verglichen. Ausschliesslich die
+serverseitige Dezimal-/UTC-Schreibweise wurde zum Vergleich normalisiert;
+keine Messdaten wurden veraendert. Jeder Sample hat worker_count und
+completed_workers=4. score_validation sowie alle sechs Bereiche valid,
+reported_matches jeweils true. Gesamtindex146.476340; dieser Standardlauf
+misst allgemeine Kernelarbeit, keine DESKRUN-Fenster- oder SNES-Latenz.
+Originalexport unter Artifacts/Distribution/Diagnostics/SpectraStandard/
+28f69195-9efc-438c-9f16-52b6cf8ac786/run.json sowie im DevCenter.
+Kein OssiPC-/Windows- oder physischer Bild-/Audio-/Latenznachweis.

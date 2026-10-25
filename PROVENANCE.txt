@@ -1,0 +1,3 @@
+DESKRUN is original R4OS code, introduced for release 0.87.13.
+The launch byte contract belongs to Services/WindowService.
+File associations, shortcuts and installed subsystem discovery use R4STD.
