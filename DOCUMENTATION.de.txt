@@ -169,3 +169,13 @@ misst allgemeine Kernelarbeit, keine DESKRUN-Fenster- oder SNES-Latenz.
 Originalexport unter Artifacts/Distribution/Diagnostics/SpectraStandard/
 28f69195-9efc-438c-9f16-52b6cf8ac786/run.json sowie im DevCenter.
 Kein OssiPC-/Windows- oder physischer Bild-/Audio-/Latenznachweis.
+
+
+0.88.26: DESKRUN2 fordert standardmaessig generationengebundene Abschluss-/
+Ausgabebelege an. JSON evidence_retained/evidence_unavailable und Text
+evidence=... trennen Retentionsfehler vom echten Startresultat. terminal/
+ERRORLEVEL bleiben Startquittungen. Desktop haelt bis WINSVC-ACK; WINSVC
+haelt in der bestehenden16er/60s-History. Externe SDK108-Beobachter binden
+eine eigene R4SYS32-Referenz; PORTABLE ueberlebt Creator-Ende bis Freigabe.
+GUI stdout/stderr ist ein normalisiertes16384Byte-Transcript, getrennt von
+R4DRAW/COM1. Vollstaendiger aktueller Vertrag und Abnahme: Docs/Desktop/DeskRun.txt.

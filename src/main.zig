@@ -28,7 +28,7 @@ pub fn r4_app_main(app: *r4os.App) i32 {
         if (app.raw.instance_id == 0 or app.raw.instance_id > std.math.maxInt(u32) or sys.programOpenHandle(@intCast(app.raw.instance_id), &caller) != 0) return failure(&sys, .transport, "CallerIdentity", options.json);
         request.broker = .{ .instance = service.instance_id, .generation = service.generation };
         request.request = .{ .instance = caller.instance_id, .generation = caller.generation };
-        request.flags = if (options.frame) w.wait_frame else 0;
+        request.flags = w.retain_evidence | (if (options.frame) @as(u32, w.wait_frame) else 0);
         request.deadline = sys.ticks() +| sys.ticksFromMilliseconds(options.wait_ms);
     }
     const op = if (options.key != null) w.status else w.submit;
@@ -88,7 +88,10 @@ fn failure(sys: *const r4os.r4sys.Context, code: w.Code, label: []const u8, json
 }
 fn report(sys: *const r4os.r4sys.Context, value: w.Message, json: bool) void {
     var bytes: [768]u8 = undefined;
-    const text = if (json) std.fmt.bufPrint(&bytes, "{{\"request\":\"{d}:{d}:{d}:{d}\",\"phase\":\"{s}\",\"error\":\"{s}\",\"errorlevel\":{d},\"process_id\":{d},\"process_generation\":{d},\"window\":{d},\"content\":{d},\"raw\":{d},\"terminal\":{s}}}", .{ value.broker.instance, value.broker.generation, value.request.instance, value.request.generation, @tagName(value.phase), @tagName(value.code), @intFromEnum(value.code), value.process.instance, value.process.generation, value.window, value.content, value.raw, if (value.done()) "true" else "false" }) catch "DESKRUN output error" else std.fmt.bufPrint(&bytes, "DESKRUN request={d}:{d}:{d}:{d} phase={s} result={s} ERRORLEVEL={d} process={d}:{d} window={d} content={d} raw={d}", .{ value.broker.instance, value.broker.generation, value.request.instance, value.request.generation, @tagName(value.phase), @tagName(value.code), @intFromEnum(value.code), value.process.instance, value.process.generation, value.window, value.content, value.raw }) catch "DESKRUN output error";
+    const unavailable = value.flags & w.evidence_unavailable != 0;
+    const retained = value.flags & w.retain_evidence != 0 and value.process.valid() and !unavailable;
+    const evidence = if (unavailable) "unavailable" else if (retained) "retained" else if (value.flags & w.retain_evidence != 0) "pending" else "none";
+    const text = if (json) std.fmt.bufPrint(&bytes, "{{\"request\":\"{d}:{d}:{d}:{d}\",\"phase\":\"{s}\",\"error\":\"{s}\",\"errorlevel\":{d},\"process_id\":{d},\"process_generation\":{d},\"window\":{d},\"content\":{d},\"raw\":{d},\"terminal\":{s},\"evidence_retained\":{s},\"evidence_unavailable\":{s}}}", .{ value.broker.instance, value.broker.generation, value.request.instance, value.request.generation, @tagName(value.phase), @tagName(value.code), @intFromEnum(value.code), value.process.instance, value.process.generation, value.window, value.content, value.raw, if (value.done()) "true" else "false", if (retained) "true" else "false", if (unavailable) "true" else "false" }) catch "DESKRUN output error" else std.fmt.bufPrint(&bytes, "DESKRUN request={d}:{d}:{d}:{d} phase={s} result={s} ERRORLEVEL={d} process={d}:{d} window={d} content={d} raw={d} evidence={s}", .{ value.broker.instance, value.broker.generation, value.request.instance, value.request.generation, @tagName(value.phase), @tagName(value.code), @intFromEnum(value.code), value.process.instance, value.process.generation, value.window, value.content, value.raw, evidence }) catch "DESKRUN output error";
     sys.println(text);
     if (!json and (value.code == .timeout or value.code == .transport)) sys.println("Use DESKRUN /STATUS:<request> to inspect this request. Do not submit it again automatically.");
 }
