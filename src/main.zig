@@ -3,6 +3,7 @@ const r4os = @import("r4os");
 const w = @import("desktop_launch");
 const cli = @import("cli.zig");
 const resolve = @import("resolve.zig");
+const ControlGrant = struct { requested: bool = false, result: i32 = 0, serial: u64 = 0 };
 pub fn r4_app_main(app: *r4os.App) i32 {
     const sys = app.system();
     const raw = std.mem.trimStart(u8, app.args(), " \t");
@@ -31,8 +32,15 @@ pub fn r4_app_main(app: *r4os.App) i32 {
         request.flags = w.retain_evidence | (if (options.frame) @as(u32, w.wait_frame) else 0);
         request.deadline = sys.ticks() +| sys.ticksFromMilliseconds(options.wait_ms);
     }
+    // Bind the original request before submission. A later numeric /STATUS
+    // cannot reconstruct a lost boot/service epoch and never invents one.
+    const scope = if (options.key == null) evidenceScope(&sys, &connection, request) else null;
     const op = if (options.key != null) w.status else w.submit;
     var result = call(&sys, &connection, op, request, if (options.key != null) sys.ticks() +| sys.ticksFromMilliseconds(options.wait_ms) else request.deadline);
+    var control: ControlGrant = .{ .requested = options.controller != null, .result = if (options.controller != null) r4os.abi.desktop_action_result_unavailable else 0 };
+    if (options.controller) |controller| if (options.key == null and result.code == .ok) {
+        if (scope) |original| control = grantController(&sys, &connection, request, original, controller);
+    };
     if (options.key == null and result.code == .ok and !result.done()) {
         // The single remaining wait uses the ORIGINAL absolute deadline.
         // No re-submit, polling loop or new timeout window after acceptance.
@@ -43,8 +51,44 @@ pub fn r4_app_main(app: *r4os.App) i32 {
         query.title = .{0} ** 48;
         result = call(&sys, &connection, w.wait, query, request.deadline);
     }
-    report(&sys, result, options.json);
+    report(&sys, result, options.json, scope, control);
     return @intCast(@intFromEnum(result.code));
+}
+fn evidenceScope(sys: *const r4os.r4sys.Context, connection: *r4os.app_services.ServiceConnection, launch: w.Message) ?r4os.abi.DesktopEvidenceToken {
+    const a = r4os.abi;
+    const now = sys.ticks();
+    if (now >= launch.deadline) return null;
+    const request: a.DesktopEvidenceRequest = .{};
+    var reply: a.DesktopEvidenceReply = .{};
+    const budget = @min(launch.deadline - now, sys.ticksFromMilliseconds(500));
+    switch (r4os.app_services.callWithTicks(connection, a.desktop_evidence_op_scope, std.mem.asBytes(&request), std.mem.asBytes(&reply), budget)) {
+        .response => |got| {
+            if (got.bytes != @sizeOf(a.DesktopEvidenceReply) or reply.result != 0 or reply.token.version != 1 or reply.token.size != @sizeOf(a.DesktopEvidenceToken) or
+                reply.token.broker.instance_id != launch.broker.instance or reply.token.broker.generation != launch.broker.generation or
+                reply.token.epoch[0] | reply.token.epoch[1] | reply.token.epoch[2] == 0) return null;
+            return reply.token;
+        },
+        else => return null,
+    }
+}
+fn grantController(sys: *const r4os.r4sys.Context, connection: *r4os.app_services.ServiceConnection, launch: w.Message, scope: r4os.abi.DesktopEvidenceToken, controller: r4os.abi.ProgramProcessHandle) ControlGrant {
+    const a = r4os.abi;
+    const now = sys.ticks();
+    if (now >= launch.deadline) return .{ .requested = true, .result = a.desktop_action_result_unknown };
+    const token: a.DesktopActionToken = .{ .window = .{ .service = scope.broker }, .request = .{ .instance_id = launch.request.instance, .generation = launch.request.generation }, .controller = controller, .epoch = scope.epoch, .rights = a.desktop_action_right_all };
+    const request: a.DesktopActionRequest = .{ .token = token };
+    var reply: a.DesktopActionReply = .{};
+    switch (r4os.app_services.callWithTicks(connection, a.desktop_action_op_grant, std.mem.asBytes(&request), std.mem.asBytes(&reply), @min(launch.deadline - now, sys.ticksFromMilliseconds(500)))) {
+        .response => |got| {
+            const value = reply.request.token;
+            if (got.bytes != @sizeOf(a.DesktopActionReply) or value.version != 1 or value.size != @sizeOf(a.DesktopActionToken) or
+                !std.meta.eql(value.window.service, token.window.service) or !std.meta.eql(value.request, token.request) or
+                !std.meta.eql(value.controller, token.controller) or !std.meta.eql(value.epoch, token.epoch) or value.rights != token.rights or
+                (reply.result == 0 and value.grant == 0)) return .{ .requested = true, .result = a.desktop_action_result_invalid };
+            return .{ .requested = true, .result = reply.result, .serial = value.grant };
+        },
+        else => return .{ .requested = true, .result = a.desktop_action_result_unknown },
+    }
 }
 fn call(sys: *const r4os.r4sys.Context, connection: *r4os.app_services.ServiceConnection, op: u16, request: w.Message, deadline: u64) w.Message {
     var bytes: [w.size]u8 = undefined;
@@ -86,23 +130,29 @@ fn failure(sys: *const r4os.r4sys.Context, code: w.Code, label: []const u8, json
     sys.println(text);
     return @intCast(@intFromEnum(code));
 }
-fn report(sys: *const r4os.r4sys.Context, value: w.Message, json: bool) void {
-    var bytes: [768]u8 = undefined;
+fn report(sys: *const r4os.r4sys.Context, value: w.Message, json: bool, scope: ?r4os.abi.DesktopEvidenceToken, control: ControlGrant) void {
+    var bytes: [1024]u8 = undefined;
+    const epoch = if (scope) |bound| bound.epoch else @as([3]u64, .{0} ** 3);
     const unavailable = value.flags & w.evidence_unavailable != 0;
     const retained = value.flags & w.retain_evidence != 0 and value.process.valid() and !unavailable;
     const evidence = if (unavailable) "unavailable" else if (retained) "retained" else if (value.flags & w.retain_evidence != 0) "pending" else "none";
-    const text = if (json) std.fmt.bufPrint(&bytes, "{{\"request\":\"{d}:{d}:{d}:{d}\",\"phase\":\"{s}\",\"error\":\"{s}\",\"errorlevel\":{d},\"process_id\":{d},\"process_generation\":{d},\"window\":{d},\"content\":{d},\"raw\":{d},\"terminal\":{s},\"evidence_retained\":{s},\"evidence_unavailable\":{s}}}", .{ value.broker.instance, value.broker.generation, value.request.instance, value.request.generation, @tagName(value.phase), @tagName(value.code), @intFromEnum(value.code), value.process.instance, value.process.generation, value.window, value.content, value.raw, if (value.done()) "true" else "false", if (retained) "true" else "false", if (unavailable) "true" else "false" }) catch "DESKRUN output error" else std.fmt.bufPrint(&bytes, "DESKRUN request={d}:{d}:{d}:{d} phase={s} result={s} ERRORLEVEL={d} process={d}:{d} window={d} content={d} raw={d} evidence={s}", .{ value.broker.instance, value.broker.generation, value.request.instance, value.request.generation, @tagName(value.phase), @tagName(value.code), @intFromEnum(value.code), value.process.instance, value.process.generation, value.window, value.content, value.raw, evidence }) catch "DESKRUN output error";
+    const text = if (json) std.fmt.bufPrint(&bytes, "{{\"request\":\"{d}:{d}:{d}:{d}\",\"phase\":\"{s}\",\"error\":\"{s}\",\"errorlevel\":{d},\"process_id\":{d},\"process_generation\":{d},\"window\":{d},\"content\":{d},\"raw\":{d},\"terminal\":{s},\"evidence_retained\":{s},\"evidence_unavailable\":{s},\"evidence_scope_available\":{s},\"evidence_epoch\":[\"{d}\",\"{d}\",\"{d}\"],\"control_requested\":{s},\"control_result\":{d},\"control_grant\":\"{d}\"}}", .{ value.broker.instance, value.broker.generation, value.request.instance, value.request.generation, @tagName(value.phase), @tagName(value.code), @intFromEnum(value.code), value.process.instance, value.process.generation, value.window, value.content, value.raw, if (value.done()) "true" else "false", if (retained) "true" else "false", if (unavailable) "true" else "false", if (scope != null) "true" else "false", epoch[0], epoch[1], epoch[2], if (control.requested) "true" else "false", control.result, control.serial }) catch "DESKRUN output error" else std.fmt.bufPrint(&bytes, "DESKRUN request={d}:{d}:{d}:{d} phase={s} result={s} ERRORLEVEL={d} process={d}:{d} window={d} content={d} raw={d} evidence={s}", .{ value.broker.instance, value.broker.generation, value.request.instance, value.request.generation, @tagName(value.phase), @tagName(value.code), @intFromEnum(value.code), value.process.instance, value.process.generation, value.window, value.content, value.raw, evidence }) catch "DESKRUN output error";
     sys.println(text);
+    if (!json and control.requested) {
+        const detail = std.fmt.bufPrint(&bytes, "DESKRUN control grant={d} result={d}; launch ERRORLEVEL and control result are separate.", .{ control.serial, control.result }) catch "DESKRUN control unknown";
+        sys.println(detail);
+    }
     if (!json and (value.code == .timeout or value.code == .transport)) sys.println("Use DESKRUN /STATUS:<request> to inspect this request. Do not submit it again automatically.");
 }
 fn help(sys: *const r4os.r4sys.Context) void {
-    sys.println("DESKRUN [/JSON] [/WAIT:ms] [/WAITFRAME] <app.R4X> [application arguments]");
+    sys.println("DESKRUN [/JSON] [/WAIT:ms] [/WAITFRAME] [/CONTROLLER:pid:generation] <app.R4X> [arguments]");
     sys.println("DESKRUN [/JSON] [/WAIT:ms] [/WAITFRAME] /OPEN <folder, file or shortcut>");
     sys.println("DESKRUN [/JSON] /STATUS:<broker:gen:request:gen>");
     sys.println("Options precede the target. Quote paths containing spaces. Relative paths use CWD.");
     sys.println("Starts in the existing Desktop; the app survives this helper and SSH logout.");
     sys.println("WAIT defaults to 5000 ms (1..300000), shared by submission and window wait.");
     sys.println("WAITFRAME additionally waits for Desktop-consumed content, not physical display visibility.");
+    sys.println("CONTROLLER explicitly delegates Resize/Minimize/Restore to that live program. Check control_result/control_grant separately.");
     sys.println("ERRORLEVEL: 0 OK, 1 transport, 2 syntax, 3 resolution, 4 no Desktop, 5 queue full,");
     sys.println("6 windows full, 7 loader, 8 attach, 9 timeout, 10 Desktop lost, 11 app ended,");
     sys.println("12 protocol, 13 unknown/expired request, 14 service restarted. No automatic re-submit.");

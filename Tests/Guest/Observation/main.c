@@ -1,6 +1,8 @@
 #include <r4os/app_gui.h>
 #include <r4os/app_resources.h>
 #include <stdatomic.h>
+#include "handoff.h"
+#include "window_actions.h"
 static void text(R4App*a,const char*s){uint32_t n=0;while(s[n])n++;((R4SysWriteFn)(uintptr_t)a->system.table->write)((const uint8_t*)s,n);}
 static void number(R4App*a,int64_t v){uint8_t b[24];uint32_t n=0;uint64_t u=v<0?(uint64_t)(-(v+1))+1:(uint64_t)v;if(v<0)text(a,"-");do{b[n++]=(uint8_t)('0'+u%10);u/=10;}while(u);while(n)((R4SysWriteFn)(uintptr_t)a->system.table->write)(&b[--n],1);}
 static void field(R4App*a,const char*k,int64_t v){text(a,k);number(a,v);}
@@ -11,7 +13,7 @@ static int32_t wait_thread(uint64_t argument){
  atomic_store_explicit(&s->result,result,memory_order_release);return 0;
 }
 int32_t r4_app_main(R4App*a){
- uint64_t len=0;const uint8_t*args=r4_app_args(a,&len);if(len<2)return 2;uint8_t mode=args[0];args++;len--;
+ uint64_t len=0;const uint8_t*args=r4_app_args(a,&len);if(len&&args[0]=='J')return wm98_controller(a,args+1,len-1);if(len&&args[0]=='H')return handoff_main(a,args+1,len-1);if(len<2)return 2;uint8_t mode=args[0];args++;len--;
  uint64_t values[3]={0};uint32_t f=0,digits=0;for(uint64_t i=0;i<len;i++){uint8_t c=args[i];if(c>='0'&&c<='9'){if(values[f]>(UINT64_MAX-(c-'0'))/10)return 2;values[f]=values[f]*10+c-'0';digits++;}else if(c==':'&&digits&&f<2){f++;digits=0;}else return 2;}
  if(f!=2||!digits||values[0]>UINT32_MAX||values[2]>INT32_MAX)return 2;
  R4ProgramProcessHandle h={.instance_id=(uint32_t)values[0],.generation=values[1]};R4ProgramInstanceInfo info={0};

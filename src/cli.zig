@@ -10,6 +10,7 @@ pub const Options = struct {
     json: bool = false,
     help: bool = false,
     key: ?w.Message = null,
+    controller: ?r4os.abi.ProgramProcessHandle = null,
 };
 fn eq(a: []const u8, b: []const u8) bool {
     return std.ascii.eqlIgnoreCase(a, b);
@@ -53,9 +54,14 @@ pub fn parse(raw: []const u8) !Options {
             if (result.wait_ms == 0 or result.wait_ms > 300000) return error.InvalidWait;
             continue;
         }
+        if (!quoted and token.len > 12 and eq(token[0..12], "/CONTROLLER:")) {
+            if (result.controller != null) return error.InvalidController;
+            result.controller = try parseController(token[12..]);
+            continue;
+        }
         if (!quoted and token.len > 8 and eq(token[0..8], "/STATUS:")) {
             result.key = try parseKey(token[8..]);
-            if (rest.len != 0 or result.open or result.frame) return error.InvalidStatus;
+            if (rest.len != 0 or result.open or result.frame or result.controller != null) return error.InvalidStatus;
             return result;
         }
         if (token.len == 0 or (!quoted and token[0] == '/' and std.mem.indexOfScalar(u8, token[1..], '/') == null)) return error.InvalidTarget;
@@ -68,6 +74,13 @@ pub fn parse(raw: []const u8) !Options {
     }
     if (!result.help) return error.MissingTarget;
     return result;
+}
+pub fn parseController(raw: []const u8) !r4os.abi.ProgramProcessHandle {
+    var it = std.mem.splitScalar(u8, raw, ':');
+    const id = std.fmt.parseInt(u32, it.next() orelse return error.InvalidController, 10) catch return error.InvalidController;
+    const generation = std.fmt.parseInt(u64, it.next() orelse return error.InvalidController, 10) catch return error.InvalidController;
+    if (id == 0 or generation == 0 or it.next() != null) return error.InvalidController;
+    return .{ .instance_id = id, .generation = generation };
 }
 pub fn parseKey(raw: []const u8) !w.Message {
     var it = std.mem.splitScalar(u8, raw, ':');
@@ -107,4 +120,14 @@ test "relative paths bind to caller working directory and keys retain both gener
     try std.testing.expectEqual(@as(u64, 600), key.broker.generation);
     try std.testing.expectEqual(@as(u64, 900), key.request.generation);
     try std.testing.expectError(error.InvalidKey, parseKey("4:600:7:0"));
+}
+
+test "delegation controller retains a full nonzero generation and cannot amend legacy STATUS" {
+    const options = try parse("/JSON /CONTROLLER:7:18446744073709551615 C:\\TEMP\\APP.R4X WM98");
+    try std.testing.expectEqual(@as(u32, 7), options.controller.?.instance_id);
+    try std.testing.expectEqual(@as(u64, std.math.maxInt(u64)), options.controller.?.generation);
+    try std.testing.expectError(error.InvalidController, parseController("7:0"));
+    try std.testing.expectError(error.InvalidController, parseController("4294967296:1"));
+    try std.testing.expectError(error.InvalidController, parseController("7:1:2"));
+    try std.testing.expectError(error.InvalidStatus, parse("/CONTROLLER:7:8 /STATUS:1:2:3:4"));
 }

@@ -1,7 +1,13 @@
 #include <r4os/app_gui.h>
+#include "window_actions.h"
 int32_t r4_app_main(R4App *app) {
  uint64_t argument_length=0;const uint8_t*arguments=r4_app_args(app,&argument_length);
+ if(argument_length==4&&arguments[0]=='W'&&arguments[1]=='M'&&arguments[2]=='9'&&arguments[3]=='8')return wm98_app(app);
  const int empty=argument_length==5&&arguments[0]=='E',fast=argument_length==4&&arguments[0]=='F';
+ /* Immediate empty/truncated variants use the same real Desktop owner and
+  * console path, without a window/font prerequisite. */
+ if(argument_length==5&&arguments[0]=='Q')return 37;
+ if(argument_length==5&&arguments[0]=='B'){uint8_t bytes[1024];for(uint32_t i=0;i<sizeof bytes;i++)bytes[i]='A';for(uint32_t i=0;i<20;i++)((R4SysWriteFn)(uintptr_t)app->system.table->write)(bytes,sizeof bytes);return 37;}
  if(argument_length==5&&arguments[0]=='T') {uint8_t bytes[1024];for(uint32_t i=0;i<sizeof bytes;i++)bytes[i]='A';for(uint32_t i=0;i<20;i++)((R4SysWriteFn)(uintptr_t)app->system.table->write)(bytes,sizeof bytes);}
  if(fast){
   static const uint8_t a[]="OBS26 STDOUT BEGIN\nOBS26 STDOUT END\n",b[]="OBS26 STDERR BEGIN\nOBS26 STDERR END\n";
