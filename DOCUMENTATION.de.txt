@@ -186,7 +186,8 @@ Der oeffentliche WINSVC-Vertrag DesktopLinkToken/Request/Reply erweitert den
 bestehenden Desktopstart. Zig: r4os.desktop_links.Client. C:
 r4os/desktop_links.h. Rust: Services::link_scope/link_prepare/link_activate/
 link_status/link_release sowie prepare_link_binding und link_supported.
-Scope.flags prueft die aktuelle Laufzeitfaehigkeit; die Host-Tool-Abfrage
+Scope.flags prueft die aktuelle Laufzeitfaehigkeit erst nach dem
+authentifizierten Linkaustausch eines tatsaechlichen aktuellen Desktops; die Host-Tool-Abfrage
 module-catalog capabilities --json beschreibt weiterhin nur Baufaehigkeiten.
 
   DESKRUN /LINK C:\TEMP\OWN.BIN C:\R4OS\DESKTOP\OWN.LNK
