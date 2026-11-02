@@ -179,3 +179,62 @@ haelt in der bestehenden16er/60s-History. Externe SDK108-Beobachter binden
 eine eigene R4SYS32-Referenz; PORTABLE ueberlebt Creator-Ende bis Freigabe.
 GUI stdout/stderr ist ein normalisiertes16384Byte-Transcript, getrennt von
 R4DRAW/COM1. Vollstaendiger aktueller Vertrag und Abnahme: Docs/Desktop/DeskRun.txt.
+
+Native eigene R4LNK-Aktivierung (0.89.16)
+----------------------------------------
+Der oeffentliche WINSVC-Vertrag DesktopLinkToken/Request/Reply erweitert den
+bestehenden Desktopstart. Zig: r4os.desktop_links.Client. C:
+r4os/desktop_links.h. Rust: Services::link_scope/link_prepare/link_activate/
+link_status/link_release sowie prepare_link_binding und link_supported.
+Scope.flags prueft die aktuelle Laufzeitfaehigkeit; die Host-Tool-Abfrage
+module-catalog capabilities --json beschreibt weiterhin nur Baufaehigkeiten.
+
+  DESKRUN /LINK C:\TEMP\OWN.BIN C:\R4OS\DESKTOP\OWN.LNK
+  DESKRUN /LINKSTATUS C:\TEMP\OWN.BIN
+  DESKRUN /LINKRELEASE C:\TEMP\OWN.BIN
+
+LINK liest die echten Linkbytes, speichert zuerst den Intent und danach den
+kanonischen Prepare-Auftrag mit nichtnull Serial. Beide Schreibschritte
+werden vollstaendig zurueckgelesen. Erst dann folgt Activate. Eine vorhandene
+Recorddatei wird nicht fuer einen neuen Start ueberschrieben. Nach unklarer
+Antwort nur LINKSTATUS auf dem Original verwenden. Ein neuer Helfer besitzt
+eine andere Prozessgeneration und kann diesen alten Auftrag nicht aktivieren.
+Der urspruengliche Aufrufer darf denselben unveraenderten Activate erneut
+abfragen; die Annahme kann nur einmal vom vorbereiteten Zustand wechseln.
+
+Die Bindung umfasst den kanonischen absoluten LNK-Pfad, alle 1..1024 Linkbytes,
+den urspruenglichen Besitzer samt Generation, Intent, Dienstgeneration und
+frische Dienst-/Bootepoche. Prepare startet nichts. Der Aufrufer speichert
+den vollstaendigen pointerfreien Request vor Activate. Veraenderte Parameter
+unter derselben Kennung ergeben einen Konflikt; andere Aktivierer werden vor
+Wirkung abgewiesen. Dies ist eine logische eigene Bindung im vertrauenswuerdigen
+Single-User-System und kein Dateirechte- oder Benutzermodell.
+
+Desktop und Desktopicons verwenden denselben R4STD-Linkparser und
+Associations.shortcut-Pfad. Ein API-Auftrag enthaelt weiterhin den Link;
+Aufloesung im Helfer oder ein direkter R4X-Start sind kein Linkbeleg. Desktop
+liest die Linkdatei erneut und vergleicht alle Bytes vor der Aufloesung; der
+kopierte Loaderworker prueft die Bindung unmittelbar vor dem Spawn erneut.
+Der Originalbeleg enthaelt die Linkbytes, das tatsaechlich aufgeloeste Ziel,
+Argumente/Policy sowie die wirkliche Prozess-ID/Generation. Ein bereits
+laufendes oder gerade ladendes Single-Instance-Ziel wird fuer diese begrenzte
+Neuaktivierung abgewiesen, bevor ein bestehendes Fenster fokussiert wird.
+Normale Iconaktivierungen behalten ihre bestehende Single-Instance-Politik.
+
+Die urspruengliche Startfrist betraegt hoechstens 30 Sekunden; bis acht
+Originalauftraege bleiben beim Broker gebunden. Prepared, Accepted, Starting,
+Process und Ready werden getrennt quittiert. Ready belegt eine tatsaechlich
+uebernommene GUI-Framegeneration oder Konsolenausgaberevision, keinen Scanout.
+Ende stammt ausschliesslich aus der unabhaengigen nativen Prozessbeobachtung;
+Reap wird separat am genauen Handle geprueft. Status startet, schliesst,
+reapt und released nichts. Release wartet bei laufenden/ungewissen Starts;
+Cleanup quittiert erst die tatsaechlich freigegebene Brokerbeobachtung nach
+Ende und Reap. Desktop behaelt seine normale Kind-/Loader-/Reap-Verantwortung.
+
+Kanonische Records und Belege ueberleben den Helfer-/SSH-Exit bis zum
+expliziten Cleanup oder Dienstende. Explizit bereinigte/abgelaufene Records
+koennen spaeter Platz fuer neue Serials machen; Status meldet danach Unknown,
+Activate legt niemals einen fehlenden alten Record neu an. Dienst- oder
+Bootwechsel meldet Stale fuer die alte Epoche, ohne einen gespeicherten
+Auftrag erneut zu starten. Der gespeicherte Schluessel ist dauerhaft, die
+native Belegaufbewahrung ist bewusst an diese Dienst-/Bootepoche gebunden.

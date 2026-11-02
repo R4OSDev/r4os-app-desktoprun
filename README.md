@@ -44,3 +44,10 @@ zero-based GUI index. WINSVC31 adapts the two contracts. Native exact-child
 actions/frame/input/slotreuse and public C/Rust/Zig pass with sourceSDK127,
 Contract68, Desktop198 and unchangedKernel452/SMP4. Final published matching
 remains0.88.99/100; this does not qualify Studio0.8.3 or publish a release.
+
+DESKRUN 0.1.5 adds native own-link activation with `/LINK record-file own.LNK`,
+`/LINKSTATUS record-file` and `/LINKRELEASE record-file`. The helper persists
+and verifies the original generation/epoch/content-bound request before
+activation. Lost replies are reconciled by read-only Status. The actual
+Desktop resolves the real link, and its process/ready/end/cleanup receipt is
+available through the typed Zig/C/Rust SDK API. See DOCUMENTATION.de.txt.

@@ -8,6 +8,7 @@ pub fn r4_app_main(app: *r4os.App) i32 {
     const sys = app.system();
     const raw = std.mem.trimStart(u8, app.args(), " \t");
     const json_requested = raw.len >= 5 and std.ascii.eqlIgnoreCase(raw[0..5], "/JSON") and (raw.len == 5 or raw[5] == ' ' or raw[5] == '\t');
+    if (@import("links.zig").run(app, raw)) |code| return code;
     const options = cli.parse(app.args()) catch |err| return failure(&sys, .syntax, @errorName(err), json_requested);
     if (options.help) {
         help(&sys);
@@ -148,6 +149,9 @@ fn help(sys: *const r4os.r4sys.Context) void {
     sys.println("DESKRUN [/JSON] [/WAIT:ms] [/WAITFRAME] [/CONTROLLER:pid:generation] <app.R4X> [arguments]");
     sys.println("DESKRUN [/JSON] [/WAIT:ms] [/WAITFRAME] /OPEN <folder, file or shortcut>");
     sys.println("DESKRUN [/JSON] /STATUS:<broker:gen:request:gen>");
+    sys.println("DESKRUN /LINK <new-record-file> <own-shortcut.LNK>");
+    sys.println("DESKRUN /LINKSTATUS <saved-record-file> | /LINKRELEASE <saved-record-file>");
+    sys.println("LINK saves the original binding before activation. After response loss use LINKSTATUS; it never starts again.");
     sys.println("Options precede the target. Quote paths containing spaces. Relative paths use CWD.");
     sys.println("Starts in the existing Desktop; the app survives this helper and SSH logout.");
     sys.println("WAIT defaults to 5000 ms (1..300000), shared by submission and window wait.");
