@@ -72,11 +72,15 @@ pub fn run(app: *r4os.App, raw: []const u8) ?i32 {
         .reply => |r| r,
         .failure => return 1,
     };
-    if (!links.supported(&scope)) return 4;
+    if (!links.supported(&scope)) {
+        sys.println("Native Desktop link activation unavailable.");
+        return 4;
+    }
     var owner: r4os.abi.ProgramProcessHandle = .{};
     if (sys.programOpenHandle(@intCast(app.raw.instance_id), &owner) != 0) return 4;
-    var intent: [3]u64 = undefined;
-    if (!r4os.secure_random.fill(std.mem.asBytes(&intent))) return 4;
+    // One helper owns one activation. This is a logical deduplication key,
+    // not entropy: freshness across service/boot is the broker's real epoch.
+    const intent = [3]u64{ owner.generation, sys.ticks(), owner.instance_id };
     const q = links.binding(scope.request.token, owner, intent, sys.ticks() +| sys.ticksFromMilliseconds(30000), path.bytes(), bytes[0..@intCast(count)]) orelse return 2;
     if (!save(&sys, record, q)) return 3;
     const prepared = switch (client.prepare(q)) {
