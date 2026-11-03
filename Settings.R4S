@@ -1,4 +1,4 @@
-SDK_ROOT=../../SDK
+﻿SDK_ROOT=../../SDK
 CONTRACT_ROOT=../../Contract
 LIBRARIES_ROOT=../../Libraries
 DEVKIT_ROOT=../../../DevKit
