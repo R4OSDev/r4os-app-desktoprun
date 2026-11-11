@@ -1,4 +1,4 @@
-# DESKRUN
+﻿# DESKRUN
 
 Launch an application in the running local R4OS Desktop from a console or SSH session.
 
@@ -51,3 +51,8 @@ and verifies the original generation/epoch/content-bound request before
 activation. Lost replies are reconciled by read-only Status. The actual
 Desktop resolves the real link, and its process/ready/end/cleanup receipt is
 available through the typed Zig/C/Rust SDK API. See DOCUMENTATION.de.txt.
+
+DESKRUN 0.1.6 uses Start2 and Query2. The argument cursor preserves the
+application's argument tail. Submission and window wait share the original
+deadline. A caller can capture the JSON response through a LaunchIo stdout
+binding and use the original request key with `/STATUS`.

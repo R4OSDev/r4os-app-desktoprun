@@ -16,23 +16,12 @@ fn eq(a: []const u8, b: []const u8) bool {
     return std.ascii.eqlIgnoreCase(a, b);
 }
 pub fn parse(raw: []const u8) !Options {
-    if (!std.unicode.utf8ValidateSlice(raw) or std.mem.indexOfScalar(u8, raw, 0) != null) return error.InvalidText;
+    var detail: r4os.arguments.Failure = .{};
+    var cursor = r4os.arguments.ArgCursor.init(raw, .{}, &detail) catch return error.InvalidText;
     var result = Options{};
-    var rest = std.mem.trimStart(u8, raw, " \t");
-    while (rest.len != 0) {
-        var token: []const u8 = undefined;
-        const quoted = rest[0] == '"';
-        if (quoted) {
-            const end = std.mem.indexOfScalarPos(u8, rest, 1, '"') orelse return error.UnclosedQuote;
-            token = rest[1..end];
-            rest = rest[end + 1 ..];
-            if (rest.len != 0 and rest[0] != ' ' and rest[0] != '\t') return error.InvalidQuote;
-        } else {
-            const end = std.mem.indexOfAny(u8, rest, " \t") orelse rest.len;
-            token = rest[0..end];
-            rest = rest[end..];
-        }
-        rest = std.mem.trimStart(u8, rest, " \t");
+    while (try cursor.next()) |item| {
+        const token = try item.bytes(raw);
+        const quoted = item.quoted();
         if (!quoted and eq(token, "/JSON")) {
             result.json = true;
             continue;
@@ -61,14 +50,14 @@ pub fn parse(raw: []const u8) !Options {
         }
         if (!quoted and token.len > 8 and eq(token[0..8], "/STATUS:")) {
             result.key = try parseKey(token[8..]);
-            if (rest.len != 0 or result.open or result.frame or result.controller != null) return error.InvalidStatus;
+            if ((try cursor.remainingArguments()).len != 0 or result.open or result.frame or result.controller != null) return error.InvalidStatus;
             return result;
         }
         if (token.len == 0 or (!quoted and token[0] == '/' and std.mem.indexOfScalar(u8, token[1..], '/') == null)) return error.InvalidTarget;
         result.target = token;
         // Everything after the target belongs to the application, including
         // quotes, repeated/trailing spaces and switches such as /JSON.
-        result.args = rest;
+        result.args = try cursor.remainingArguments();
         if (result.args.len >= 128 or (result.open and result.args.len != 0)) return error.InvalidArguments;
         return result;
     }

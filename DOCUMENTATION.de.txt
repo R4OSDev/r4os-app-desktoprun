@@ -1,4 +1,4 @@
-DESKRUN - Desktopstarts aus SSH (0.87.13)
+﻿DESKRUN - Desktopstarts aus SSH (0.87.13)
 =======================================
 
 DESKRUN ist eine normale Konsolen-App. Sie reicht einen kopierten Auftrag
@@ -239,3 +239,16 @@ Activate legt niemals einen fehlenden alten Record neu an. Dienst- oder
 Bootwechsel meldet Stale fuer die alte Epoche, ohne einen gespeicherten
 Auftrag erneut zu starten. Der gespeicherte Schluessel ist dauerhaft, die
 native Belegaufbewahrung ist bewusst an diese Dienst-/Bootepoche gebunden.
+
+API-Migration 0.90.63
+---------------------
+DESKRUN 0.1.6 startet mit SDK 0.64.199 ueber Start2 und Query2.
+R4STD Query2 und SETTINGS_V1 stehen dem /OPEN-Aufloeser zur Verfuegung.
+Der gemeinsame Argumentcursor erhaelt die Argumentfolge nach dem Ziel.
+Die Verbindung zum WINSVC wird gegen die gebundene Prozessgeneration
+geprueft. Submit, Evidence/Control und Wait teilen die urspruengliche
+Frist. Das bestehende Protokoll enthaelt weiterhin den Originalauftrag.
+Ein explizites stdout-Pipeende erhaelt alle Befehls- und JSON-Ausgaben.
+Der Helper verarbeitet bestaetigte Schreibpraefixe und meldet einen
+fehlgeschlagenen Ausgabetransport. Ein bereits uebermittelter Auftrag
+bleibt anhand seiner Originalkennung abfragbar.
