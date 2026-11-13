@@ -2,7 +2,7 @@
 //! DESKRUN parsing/transport. Uses ordinary application window lifetime.
 const std = @import("std");
 const r4os = @import("r4os");
-pub fn r4_app_main(app: *r4os.App) i32 {
+pub fn r4_app_main(app: *r4os.App2) i32 {
     const sys = app.system();
     var path: [96]u8 = undefined;
     const name = std.fmt.bufPrintZ(&path, "C:\\TEMP\\DRARGS-{d}.TXT", .{app.raw.instance_id}) catch return 1;

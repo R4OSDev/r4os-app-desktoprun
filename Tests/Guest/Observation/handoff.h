@@ -68,7 +68,7 @@ static int32_t handoff_main(R4App *app,const uint8_t *args,uint64_t len) {
                 if(!reply.data_bytes&&offset<reply.completion.output_length)return 8;
             }while(offset<reply.completion.output_length);
             R4ProgramInstanceInfo info={0};
-            const int32_t live=((R4SysProgramHandleStatusFn)(uintptr_t)app->system.table->program_handle_status)(&token.process,&info);
+            const int32_t live=((R4SysProgramHandleStatusFn)(uintptr_t)R4SYS_SLOT(&app->system, program_handle_status))(&token.process,&info);
             h97_text(app,"H97 target_live_status=");h97_number(app,(uint32_t)live);h97_text(app," bytes_saved=");h97_number(app,offset);h97_text(app,"\n");
         } else return 2;
         if(rc)return 9;

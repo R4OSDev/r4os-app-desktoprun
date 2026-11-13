@@ -2,7 +2,7 @@
 //! by the test's DESKRUN receipt; Desktop retains normal child reap ownership.
 const std = @import("std");
 const r4os = @import("r4os");
-pub fn r4_app_main(app: *r4os.App) i32 {
+pub fn r4_app_main(app: *r4os.App2) i32 {
     const sys = app.system();
     const args = app.args();
     if (std.mem.eql(u8, args, "/CHILD")) {
